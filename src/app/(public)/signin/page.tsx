@@ -8,7 +8,7 @@ import { useAuth } from "@/src/context/AuthContext";
 import { useRouter } from "next/navigation"; // Next.js 13+ App Router
 
 export default function SignIn() {
-  const { setAccessToken } = useAuth();
+  const { setAccessToken, setUser } = useAuth();
   const router = useRouter();
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,6 +17,7 @@ export default function SignIn() {
     const data = await login(new FormData(form));
 
     setAccessToken(data.accessToken);
+    if (data.user) setUser(data.user);
     router.push("/");
   };
 

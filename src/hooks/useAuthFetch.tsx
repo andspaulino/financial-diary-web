@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/src/context/AuthContext";
 
 /**
@@ -13,6 +14,7 @@ import { useAuth } from "@/src/context/AuthContext";
  */
 export function useAuthFetch() {
   const { accessToken, setAccessToken } = useAuth();
+  const router = useRouter();
 
   // ref to hold a shared refresh promise to avoid concurrent refresh requests
   const refreshPromiseRef = useRef<Promise<string | null> | null>(null);
@@ -38,7 +40,20 @@ export function useAuthFetch() {
               method: "POST",
               credentials: "same-origin",
             });
-            if (!r.ok) return null;
+            if (!r.ok) {
+              // try to read standardized error
+              let errBody = null;
+              try {
+                errBody = await r.json();
+              } catch {}
+              if (errBody?.error === "refresh_failed") {
+                // force logout: clear in-memory token and redirect to signin
+                setAccessToken(null);
+                router.push("/signin");
+                return null;
+              }
+              return null;
+            }
             const d = await r.json();
             return (d.accessToken as string) || null;
           } catch {
@@ -63,7 +78,7 @@ export function useAuthFetch() {
         credentials: "same-origin",
       });
     },
-    [accessToken, setAccessToken]
+    [accessToken, setAccessToken, router]
   );
 
   return authFetch;

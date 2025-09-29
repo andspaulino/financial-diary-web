@@ -1,31 +1,41 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+// route runs server-side; NextRequest not needed here
+import { cookies } from "next/headers";
 
-const AUTH_URL = process.env.AUTH_URL || "http://localhost:8080";
+const BASE_API_URL = process.env.BASE_API_URL || "http://localhost:8080";
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
-    // read cookies from the incoming request
-    const cookieHeader = req.headers.get("cookie") || "";
+    // read the HttpOnly `session` cookie using Next's cookie helper
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get("session")?.value;
 
-    // forward cookies to auth server so it can read the refresh token (session cookie)
-    const r = await fetch(`${AUTH_URL}/api/v1/auth/refresh`, {
+    // forward the session cookie to the auth server so it can read the refresh token
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (sessionCookie) headers.Cookie = `session=${sessionCookie}`;
+
+    // bodyless POST; auth server should read refresh token from cookie
+    const r = await fetch(`${BASE_API_URL}/api/v1/auth/refresh`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: cookieHeader,
-      },
-      // bodyless POST; auth server should read refresh token from cookie
+      headers,
     });
 
     if (!r.ok) {
-      return NextResponse.json(
-        { error: "could not refresh" },
-        { status: r.status }
-      );
+      // If auth server says unauthorized, surface a consistent refresh_failed error.
+      if (r.status === 401 || r.status === 403) {
+        return NextResponse.json({ error: "refresh_failed" }, { status: 401 });
+      }
+      // Other upstream errors
+      return NextResponse.json({ error: "refresh_error" }, { status: 502 });
     }
 
     const data = await r.json();
+
+    if (!data || !data.accessToken) {
+      return NextResponse.json({ error: "refresh_failed" }, { status: 502 });
+    }
 
     // If the auth server returns a set-cookie header to rotate the refresh token, propagate it.
     const setCookie = r.headers.get("set-cookie");
