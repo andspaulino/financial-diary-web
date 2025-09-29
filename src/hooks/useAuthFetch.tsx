@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useAuth } from "@/src/context/AuthContext";
 
 /**
@@ -14,51 +14,54 @@ import { useAuth } from "@/src/context/AuthContext";
 export function useAuthFetch() {
   const { accessToken, setAccessToken } = useAuth();
 
+  // ref to hold a shared refresh promise to avoid concurrent refresh requests
+  const refreshPromiseRef = useRef<Promise<string | null> | null>(null);
+
   const authFetch = useCallback(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const headers = new Headers(init?.headers as HeadersInit | undefined);
       if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
-      // ensure cookies are sent for same-origin requests (so refresh cookie is available server-side)
       const res = await fetch(input, {
         ...init,
         headers,
         credentials: init?.credentials ?? "same-origin",
       });
 
-      // Basic convenience: if we receive 401, you probably need to try refresh.
-      // A recommended flow is:
-      // 1) call your refresh endpoint (/api/auth/refresh) which uses the httpOnly `session` cookie
-      // 2) if refresh returns new access token, call setAccessToken(newToken) and retry the original request
-      // Here we don't automatically refresh (so you can control the UX), but example code is below.
+      if (res.status !== 401) return res;
 
-      if (res.status === 401) {
-        // optional: try to refresh automatically
-        try {
-          const r = await fetch("/api/auth/refresh", {
-            method: "POST",
-            credentials: "same-origin",
-          });
-          if (r.ok) {
+      // If we already have a refresh in progress, wait for it. Otherwise, create one.
+      if (!refreshPromiseRef.current) {
+        refreshPromiseRef.current = (async () => {
+          try {
+            const r = await fetch("/api/auth/refresh", {
+              method: "POST",
+              credentials: "same-origin",
+            });
+            if (!r.ok) return null;
             const d = await r.json();
-            if (d.accessToken) {
-              setAccessToken(d.accessToken);
-              // retry original request with new token
-              const retryHeaders = new Headers(headers);
-              retryHeaders.set("Authorization", `Bearer ${d.accessToken}`);
-              return fetch(input, {
-                ...init,
-                headers: retryHeaders,
-                credentials: "same-origin",
-              });
-            }
+            return (d.accessToken as string) || null;
+          } catch {
+            return null;
           }
-        } catch {
-          // ignore and fallthrough to returning original 401
-        }
+        })();
       }
 
-      return res;
+      const newToken = await refreshPromiseRef.current;
+      // reset ref so future 401s can trigger a fresh refresh
+      refreshPromiseRef.current = null;
+
+      if (!newToken) return res;
+
+      // update in-memory token and retry original request
+      setAccessToken(newToken);
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set("Authorization", `Bearer ${newToken}`);
+      return fetch(input, {
+        ...init,
+        headers: retryHeaders,
+        credentials: "same-origin",
+      });
     },
     [accessToken, setAccessToken]
   );
