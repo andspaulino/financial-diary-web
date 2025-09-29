@@ -35,8 +35,7 @@ export function middleware(request: NextRequest) {
 
   if (authToken && !publicRoute) {
     // Checar se JWT está expirado
-    // Se estiver, remover o cookie e redirecionar para /signin
-    // Aplicar refresh token logic
+    // Se estiver, Aplicar refresh token logic na aplicação e nao no middle que serve apenas para redirecionar
 
     return NextResponse.next();
   }
