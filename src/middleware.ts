@@ -11,7 +11,7 @@ const REDIRECT_WHEN_NOT_AUTHENTICATED = "/signin";
 export function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const publicRoute = publicRoutes.find((route) => route.path === path);
-  const authToken = request.cookies.get("access_token")?.value;
+  const authToken = request.cookies.get("session")?.value;
 
   if (!authToken && publicRoute) {
     return NextResponse.next();
@@ -40,8 +40,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  console.log("DEU CERTO");
-  NextResponse.next();
+  return NextResponse.next();
 }
 
 export const config: MiddlewareConfig = {

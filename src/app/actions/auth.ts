@@ -7,7 +7,7 @@ export async function login(formData: FormData) {
   const email = String(formData.get("email") || "");
   const password = String(formData.get("password") || "");
 
-  const AUTH_URL = process.env.AUTH_URL ?? "https://auth.example.com";
+  const AUTH_URL = process.env.AUTH_URL ?? "http://localhost:8080";
 
   const res = await fetch(`${AUTH_URL}/api/v1/auth/login`, {
     method: "POST",
@@ -17,35 +17,20 @@ export async function login(formData: FormData) {
   });
 
   if (!res.ok) {
-    // Throw an error so the client action state can read it (useActionState)
     throw new Error(`Login failed: ${res.status}`);
   }
 
   const data = await res.json();
-  const accessToken = data.accessToken;
-  const refreshToken = data.refreshToken;
-  const expiresIn = data.expiresIn ?? 60 * 15;
-  const refreshExpiresIn = data.refreshExpiresIn ?? 60 * 60 * 24 * 30;
+  const { accessToken, refreshToken } = data;
 
   const cookieStore = await cookies();
-  cookieStore.set("access_token", accessToken, {
+  cookieStore.set("session", refreshToken, {
     httpOnly: true,
     path: "/",
-    maxAge: expiresIn,
+    maxAge: 60 * 60 * 24 * 7,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
   });
 
-  if (refreshToken) {
-    cookieStore.set("refresh_token", refreshToken, {
-      httpOnly: true,
-      path: "/",
-      maxAge: refreshExpiresIn,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-    });
-  }
-
-  // Redirect to dashboard or home
-  redirect("/");
+  return { accessToken };
 }
