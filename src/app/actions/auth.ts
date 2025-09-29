@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 export async function login(formData: FormData) {
   const email = String(formData.get("email") || "");
@@ -32,4 +33,16 @@ export async function login(formData: FormData) {
   });
 
   return { accessToken };
+}
+
+export async function logout() {
+  const cookieStore = await cookies();
+  cookieStore.set("session", "", {
+    httpOnly: true,
+    path: "/",
+    maxAge: 0,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  redirect("/");
 }
